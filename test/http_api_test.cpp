@@ -317,10 +317,12 @@ void expect_single_stream_descriptor(const nlohmann::json& body,
 
 class FakeWebSocketSource {
 public:
-    explicit FakeWebSocketSource(const gr4cp::domain::InternalStreamBinding& binding)
+    explicit FakeWebSocketSource(const gr4cp::domain::InternalStreamBinding& binding,
+                                 bool read_after_handshake = false)
         : host_(binding.host),
           port_(binding.port),
           path_(binding.path),
+          read_after_handshake_(read_after_handshake),
           acceptor_(io_context_) {
         beast::error_code error;
         const auto address = asio::ip::make_address(host_, error);
@@ -366,6 +368,16 @@ public:
             return;
         }
 
+        if (read_after_handshake_) {
+            // Keep automatic pong writes and data writes on the same executor.
+            asio::post(io_context_, [connection, payload = std::make_shared<std::string>(payload)]() {
+                connection->ws.text(true);
+                connection->ws.async_write(asio::buffer(*payload),
+                                           [connection, payload](beast::error_code, std::size_t) {});
+            });
+            return;
+        }
+
         std::lock_guard write_lock(connection->write_mutex);
         beast::error_code error;
         connection->ws.text(true);
@@ -384,6 +396,13 @@ public:
         beast::error_code error;
         acceptor_.cancel(error);
         acceptor_.close(error);
+
+        if (read_after_handshake_) {
+            io_context_.stop();
+            if (thread_.joinable()) {
+                thread_.join();
+            }
+        }
 
         std::shared_ptr<Connection> connection;
         {
@@ -406,8 +425,19 @@ private:
         explicit Connection(tcp::socket socket) : ws(std::move(socket)) {}
 
         websocket::stream<beast::tcp_stream> ws;
+        beast::flat_buffer read_buffer;
         std::mutex write_mutex;
     };
+
+    void read(const std::shared_ptr<Connection>& connection) {
+        connection->ws.async_read(connection->read_buffer,
+                                  [this, connection](beast::error_code error, std::size_t) {
+                                      if (!error) {
+                                          connection->read_buffer.consume(connection->read_buffer.size());
+                                          read(connection);
+                                      }
+                                  });
+    }
 
     void run() {
         while (!stopped_.load()) {
@@ -443,8 +473,13 @@ private:
                 condition_.notify_all();
             }
 
-            while (!stopped_.load()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (read_after_handshake_) {
+                read(connection);
+                io_context_.run();
+            } else {
+                while (!stopped_.load()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
             }
 
             {
@@ -460,6 +495,7 @@ private:
     std::string host_;
     int port_{};
     std::string path_;
+    bool read_after_handshake_;
     asio::io_context io_context_{1};
     tcp::acceptor acceptor_;
     std::atomic<bool> stopped_{false};
@@ -502,7 +538,7 @@ protected:
                 });
                 if (stream_plan.transport == "websocket") {
                     websocket_sources[session.id + "/" + stream_plan.stream_id] =
-                        std::make_unique<FakeWebSocketSource>(internal);
+                        std::make_unique<FakeWebSocketSource>(internal, websocket_source_reads);
                 }
             }
         }
@@ -615,6 +651,7 @@ protected:
         std::unordered_map<std::string, std::vector<gr4cp::domain::RuntimeStreamBinding>> stream_bindings;
         std::unordered_map<std::string, std::string> stream_payloads;
         std::unordered_map<std::string, std::unique_ptr<FakeWebSocketSource>> websocket_sources;
+        bool websocket_source_reads{false};
 
         std::optional<int> internal_port_for(const std::string& session_id, const std::string& stream_id) const {
             const auto it = stream_bindings.find(session_id);
@@ -790,6 +827,52 @@ protected:
         beast::flat_buffer buffer;
         stream.read(buffer);
         return beast::buffers_to_string(buffer.data());
+    }
+
+    void expect_websocket_survives_quiet_source(bool source_reads) {
+        runtime_manager.websocket_source_reads = source_reads;
+        const auto created = create_session_with_graph(authored_websocket_graph());
+        const auto id = created["id"].get<std::string>();
+        ASSERT_TRUE(client->Post(("/sessions/" + id + "/start").c_str(), "", "application/json"));
+        auto stream = connect_websocket("/sessions/" + id + "/streams/series0/ws");
+        ASSERT_TRUE(runtime_manager.wait_for_websocket_connection(id, "series0"));
+
+        runtime_manager.send_websocket_text(id, "series0", R"({"samples":[1]})");
+        ASSERT_EQ(read_websocket_text(stream), R"({"samples":[1]})");
+
+        // Keep reading throughout the quiet period so the browser answers pings.
+        // The source is silent beyond the bridge's 10-second browser idle timeout.
+        beast::flat_buffer buffer;
+        beast::error_code read_error;
+        bool read_completed = false;
+        bool second_message_sent = false;
+        asio::steady_timer quiet_period(ws_io_context_, std::chrono::seconds(15));
+        asio::steady_timer deadline(ws_io_context_, std::chrono::seconds(20));
+        quiet_period.async_wait([&](beast::error_code error) {
+            if (!error) {
+                second_message_sent = true;
+                runtime_manager.send_websocket_text(id, "series0", R"({"samples":[2]})");
+            }
+        });
+        deadline.async_wait([&](beast::error_code error) {
+            if (!error) {
+                beast::error_code ignored;
+                stream.next_layer().socket().close(ignored);
+            }
+        });
+        stream.async_read(buffer, [&](beast::error_code error, std::size_t) {
+            read_completed = true;
+            read_error = error;
+            quiet_period.cancel();
+            deadline.cancel();
+        });
+        ws_io_context_.run();
+
+        EXPECT_TRUE(read_completed);
+        ASSERT_FALSE(read_error) << read_error.message();
+        EXPECT_TRUE(second_message_sent);
+        EXPECT_TRUE(stream.is_open());
+        EXPECT_EQ(beast::buffers_to_string(buffer.data()), R"({"samples":[2]})");
     }
 
     static bool wait_for_websocket_close(websocket::stream<beast::tcp_stream>& stream,
@@ -1511,6 +1594,14 @@ TEST_F(HttpApiTest, BrowserFacingWebsocketRouteForwardsLargeSnapshotAndSubsequen
     EXPECT_EQ(read_websocket_text(stream), R"({"cursor":"9007199254740993"})");
     ASSERT_TRUE(client->Post(("/sessions/" + id + "/stop").c_str(), "", "application/json"));
     EXPECT_TRUE(wait_for_websocket_close(stream));
+}
+
+TEST_F(HttpApiTest, BrowserFacingWebsocketRouteSurvivesQuietNonReadingSource) {
+    expect_websocket_survives_quiet_source(false);
+}
+
+TEST_F(HttpApiTest, BrowserFacingWebsocketRouteSurvivesQuietReadingSource) {
+    expect_websocket_survives_quiet_source(true);
 }
 
 TEST_F(HttpApiTest, BrowserFacingWebsocketRouteProxiesAlternatePayloadFramesVerbatim) {

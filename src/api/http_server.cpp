@@ -650,9 +650,11 @@ private:
             finish_if_idle();
             return;
         }
-        // Keep a non-reading peer from pinning a pending forwarding write forever.
-        const websocket::stream_base::timeout timeout{std::chrono::seconds(2),std::chrono::seconds(10),true};
-        browser_.set_option(timeout);internal_.set_option(timeout);
+        // Keep a non-reading browser from pinning a pending forwarding write forever.
+        // The internal stream has no idle timeout. A Studio sink reads only during
+        // its handshake and never answers a ping.
+        const websocket::stream_base::timeout timeout{std::chrono::seconds(2), std::chrono::seconds(10), true};
+        browser_.set_option(timeout);
         // Managed block snapshots and Studio's JSON reducers are bounded at
         // 128 MiB. Beast's implicit 16 MiB limit rejected valid reconnect state.
         internal_.read_message_max(128ULL * 1024 * 1024);
