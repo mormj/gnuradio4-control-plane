@@ -90,6 +90,66 @@ TEST_F(WasmApiTest, CatalogRetainsStructuralPortSchema) {
     EXPECT_EQ(input.at("is_synchronous"), false);
 }
 
+TEST_F(WasmApiTest, CatalogMetadataMatchesHttpAndPreservesWorkerEnvelope) {
+    gr4cp::domain::BlockDescriptor block;
+    block.id = "wire";
+    block.name = "Wire";
+    block.canonical_type = "internal.canonical";
+    gr4cp::domain::BlockPortDescriptor fixed("empty", "float32");
+    fixed.collection_kind = "fixed";
+    fixed.fixed_extent = 0;
+    fixed.is_optional = false;
+    fixed.is_synchronous = false;
+    block.inputs.push_back(fixed);
+    gr4cp::domain::BlockPortDescriptor dynamic("unknown", "float32");
+    dynamic.cardinality_kind = gr4cp::domain::BlockPortCardinalityKind::Dynamic;
+    dynamic.current_port_count = 0;
+    dynamic.max_port_count = -1;
+    block.outputs.push_back(dynamic);
+    gr4cp::domain::BlockParameterDescriptor flag("flag", "bool", false, false, "Flag");
+    flag.allow_custom_value = false;
+    block.parameters.push_back(flag);
+    gr4cp::domain::BlockParameterDescriptor count("count", "int", false, 0, "Count");
+    count.enum_choices = std::vector<std::string>{"0", "1"};
+    count.enum_labels = {{"0", "Off"}, {"1", "On"}};
+    block.parameters.push_back(count);
+    blocks.entries.push_back(block);
+
+    const auto response = api.dispatch("GET", "/blocks/wire", "");
+    ASSERT_EQ(response.status, 200);
+    const auto public_body = Json::parse(response.body);
+    const auto port = http_server.bind_to_any_port("127.0.0.1");
+    ASSERT_GT(port, 0);
+    http_thread = std::jthread([this]() { http_server.listen_after_bind(); });
+    httplib::Client client("127.0.0.1", port);
+    const auto http = client.Get("/blocks/wire");
+    ASSERT_TRUE(http);
+    ASSERT_EQ(http->status, 200);
+    EXPECT_EQ(Json::parse(http->body), public_body);
+    EXPECT_EQ(public_body["inputs"][0]["fixed_extent"], 0);
+    EXPECT_EQ(public_body["inputs"][0]["is_optional"], false);
+    EXPECT_EQ(public_body["inputs"][0]["is_synchronous"], false);
+    EXPECT_FALSE(public_body["inputs"][0].contains("size_parameter"));
+    EXPECT_EQ(public_body["outputs"][0]["current_port_count"], 0);
+    EXPECT_EQ(public_body["outputs"][0]["max_port_count"], -1);
+    EXPECT_FALSE(public_body["outputs"][0].contains("min_port_count"));
+    EXPECT_EQ(public_body["parameters"][0]["default"], false);
+    EXPECT_EQ(public_body["parameters"][0]["allow_custom_value"], false);
+    EXPECT_EQ(public_body["parameters"][1]["default"], 0);
+    EXPECT_EQ(public_body["parameters"][1]["enum_labels"]["0"], "Off");
+    EXPECT_EQ(public_body["parameters"][1]["enum_choices"], Json::array({"0", "1"}));
+    EXPECT_FALSE(public_body.contains("canonical_type"));
+    EXPECT_FALSE(public_body["parameters"][0].contains("default_value"));
+
+    const auto worker = gr4cp::domain::block_catalog_worker_json(block);
+    EXPECT_EQ(worker["canonical_type"], "internal.canonical");
+    EXPECT_EQ(worker["parameters"][0]["default_value"], false);
+    EXPECT_EQ(worker["parameters"][1]["default_value"], 0);
+    EXPECT_FALSE(worker["parameters"][0].contains("default"));
+    EXPECT_EQ(worker["inputs"], public_body["inputs"]);
+    EXPECT_EQ(worker["outputs"], public_body["outputs"]);
+}
+
 TEST_F(WasmApiTest, HealthIdentityIsAStableUuidAcrossDispatchers) {
     const auto health = api.dispatch("GET", "/healthz", "");
     ASSERT_EQ(health.status, 200);

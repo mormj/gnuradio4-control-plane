@@ -1,6 +1,124 @@
 #include "gr4cp/domain/block_catalog.hpp"
 
+#include <nlohmann/json.hpp>
+
 namespace gr4cp::domain {
+
+using Json = nlohmann::json;
+
+Json block_parameter_default_to_json(const BlockParameterDefault& value) {
+    return std::visit([](const auto& item) -> Json { return item; }, value);
+}
+
+void to_json(Json& result, const BlockPortDescriptor& port) {
+    auto body = Json{
+        {"name", port.name},
+        {"type", port.type},
+        {"cardinality_kind", port.cardinality_kind == BlockPortCardinalityKind::Dynamic ? "dynamic" : "fixed"},
+    };
+
+    if (port.collection_kind.has_value()) {
+        body["collection_kind"] = *port.collection_kind;
+    }
+    if (port.fixed_extent.has_value()) {
+        body["fixed_extent"] = *port.fixed_extent;
+    }
+    if (port.port_kind.has_value()) {
+        body["port_kind"] = *port.port_kind;
+    }
+    if (port.is_optional.has_value()) {
+        body["is_optional"] = *port.is_optional;
+    }
+    if (port.is_synchronous.has_value()) {
+        body["is_synchronous"] = *port.is_synchronous;
+    }
+    if (port.schema_version.has_value()) {
+        body["schema_version"] = *port.schema_version;
+    }
+    if (port.current_port_count.has_value()) {
+        body["current_port_count"] = *port.current_port_count;
+    }
+    if (port.render_port_count.has_value()) {
+        body["render_port_count"] = *port.render_port_count;
+    }
+    if (port.min_port_count.has_value()) {
+        body["min_port_count"] = *port.min_port_count;
+    }
+    if (port.max_port_count.has_value()) {
+        body["max_port_count"] = *port.max_port_count;
+    }
+    if (port.size_parameter.has_value()) {
+        body["size_parameter"] = *port.size_parameter;
+    }
+    if (port.handle_name_template.has_value()) {
+        body["handle_name_template"] = *port.handle_name_template;
+    }
+
+    result = std::move(body);
+}
+
+void to_json(Json& result, const BlockParameterDescriptor& parameter) {
+    auto body = Json{
+        {"name", parameter.name},
+        {"type", parameter.type},
+        {"required", parameter.required},
+        {"default", block_parameter_default_to_json(parameter.default_value)},
+        {"summary", parameter.summary},
+    };
+
+    if (parameter.runtime_mutability.has_value()) {
+        body["runtime_mutability"] = *parameter.runtime_mutability;
+    }
+    if (parameter.value_kind.has_value()) {
+        body["value_kind"] = *parameter.value_kind;
+    }
+    if (parameter.enum_choices.has_value()) {
+        body["enum_choices"] = *parameter.enum_choices;
+    }
+    if (parameter.enum_type.has_value()) {
+        body["enum_type"] = *parameter.enum_type;
+    }
+    if (!parameter.enum_labels.empty()) {
+        body["enum_labels"] = parameter.enum_labels;
+    }
+    if (parameter.enum_source.has_value()) {
+        body["enum_source"] = *parameter.enum_source;
+    }
+    if (parameter.ui_hint.has_value()) {
+        body["ui_hint"] = *parameter.ui_hint;
+    }
+    if (parameter.allow_custom_value.has_value()) {
+        body["allow_custom_value"] = *parameter.allow_custom_value;
+    }
+
+    if (parameter.label.has_value()) body["label"] = *parameter.label;
+    if (parameter.unit.has_value()) body["unit"] = *parameter.unit;
+    if (parameter.visible.has_value()) body["visible"] = *parameter.visible;
+    if (parameter.minimum.has_value()) body["minimum"] = *parameter.minimum;
+    if (parameter.maximum.has_value()) body["maximum"] = *parameter.maximum;
+    if (parameter.update_policy.has_value()) body["update_policy"] = *parameter.update_policy;
+    if (parameter.enabled_when_parameter.has_value()) body["enabled_when_parameter"] = *parameter.enabled_when_parameter;
+    if (parameter.enabled_when_value.has_value()) body["enabled_when_value"] = *parameter.enabled_when_value;
+    result = std::move(body);
+}
+
+void to_json(Json& result, const BlockDescriptor& block) {
+    result = Json{{"id", block.id}, {"name", block.name}, {"category", block.category},
+                  {"summary", block.summary}, {"inputs", block.inputs},
+                  {"outputs", block.outputs}, {"parameters", block.parameters}};
+}
+
+nlohmann::json block_catalog_worker_json(const BlockDescriptor& block) {
+    Json result = block;
+    for (auto& parameter : result["parameters"]) {
+        parameter["default_value"] = std::move(parameter["default"]);
+        parameter.erase("default");
+    }
+    if (block.canonical_type) result["canonical_type"] = *block.canonical_type;
+    return result;
+}
+
+
 
 bool operator==(const BlockPortDescriptor& left, const BlockPortDescriptor& right) {
     return left.collection_kind == right.collection_kind && left.fixed_extent == right.fixed_extent &&
