@@ -270,13 +270,6 @@ std::string parameter_summary(const gr::property_map& meta, std::string_view nam
 
 #if !defined(__EMSCRIPTEN__)
 
-std::string_view cardinality_kind_to_string(domain::BlockPortCardinalityKind kind) {
-    switch (kind) {
-    case domain::BlockPortCardinalityKind::Fixed: return "fixed";
-    case domain::BlockPortCardinalityKind::Dynamic: return "dynamic";
-    }
-    return "fixed";
-}
 
 std::optional<domain::BlockPortCardinalityKind> cardinality_kind_from_string(std::string_view value) {
     if (value == "fixed") {
@@ -605,115 +598,6 @@ domain::BlockDescriptor reflect_block(gr::PluginLoader& loader, const std::strin
 
 #if !defined(__EMSCRIPTEN__)
 
-nlohmann::json to_json(const domain::BlockParameterDefault& value) {
-    return std::visit([](const auto& item) -> nlohmann::json { return item; }, value);
-}
-
-nlohmann::json to_json(const domain::BlockPortDescriptor& port) {
-    nlohmann::json value{{"name", port.name},
-                         {"type", port.type},
-                         {"cardinality_kind", std::string(cardinality_kind_to_string(port.cardinality_kind))}};
-    if (port.collection_kind.has_value()) {
-        value["collection_kind"] = *port.collection_kind;
-    }
-    if (port.fixed_extent.has_value()) {
-        value["fixed_extent"] = *port.fixed_extent;
-    }
-    if (port.port_kind.has_value()) {
-        value["port_kind"] = *port.port_kind;
-    }
-    if (port.is_optional.has_value()) {
-        value["is_optional"] = *port.is_optional;
-    }
-    if (port.is_synchronous.has_value()) {
-        value["is_synchronous"] = *port.is_synchronous;
-    }
-    if (port.schema_version.has_value()) {
-        value["schema_version"] = *port.schema_version;
-    }
-    if (port.current_port_count.has_value()) {
-        value["current_port_count"] = *port.current_port_count;
-    }
-    if (port.render_port_count.has_value()) {
-        value["render_port_count"] = *port.render_port_count;
-    }
-    if (port.min_port_count.has_value()) {
-        value["min_port_count"] = *port.min_port_count;
-    }
-    if (port.max_port_count.has_value()) {
-        value["max_port_count"] = *port.max_port_count;
-    }
-    if (port.size_parameter.has_value()) {
-        value["size_parameter"] = *port.size_parameter;
-    }
-    if (port.handle_name_template.has_value()) {
-        value["handle_name_template"] = *port.handle_name_template;
-    }
-    return value;
-}
-
-nlohmann::json to_json(const domain::BlockParameterDescriptor& parameter) {
-    nlohmann::json value{{"name", parameter.name},
-                         {"type", parameter.type},
-                         {"required", parameter.required},
-                         {"default_value", to_json(parameter.default_value)},
-                         {"summary", parameter.summary}};
-    if (parameter.runtime_mutability.has_value()) {
-        value["runtime_mutability"] = *parameter.runtime_mutability;
-    }
-    if (parameter.value_kind.has_value()) {
-        value["value_kind"] = *parameter.value_kind;
-    }
-    if (parameter.enum_choices.has_value()) {
-        value["enum_choices"] = *parameter.enum_choices;
-    }
-    if (parameter.enum_type.has_value()) {
-        value["enum_type"] = *parameter.enum_type;
-    }
-    if (!parameter.enum_labels.empty()) {
-        value["enum_labels"] = parameter.enum_labels;
-    }
-    if (parameter.enum_source.has_value()) {
-        value["enum_source"] = *parameter.enum_source;
-    }
-    if (parameter.ui_hint.has_value()) {
-        value["ui_hint"] = *parameter.ui_hint;
-    }
-    if (parameter.allow_custom_value.has_value()) {
-        value["allow_custom_value"] = *parameter.allow_custom_value;
-    }
-    return value;
-}
-
-nlohmann::json to_json(const domain::BlockDescriptor& block) {
-    nlohmann::json inputs = nlohmann::json::array();
-    for (const auto& input : block.inputs) {
-        inputs.push_back(to_json(input));
-    }
-
-    nlohmann::json outputs = nlohmann::json::array();
-    for (const auto& output : block.outputs) {
-        outputs.push_back(to_json(output));
-    }
-
-    nlohmann::json parameters = nlohmann::json::array();
-    for (const auto& parameter : block.parameters) {
-        parameters.push_back(to_json(parameter));
-    }
-
-    nlohmann::json value{{"id", block.id},
-                         {"name", block.name},
-                         {"category", block.category},
-                         {"summary", block.summary},
-                         {"inputs", std::move(inputs)},
-                         {"outputs", std::move(outputs)},
-                         {"parameters", std::move(parameters)}};
-    if (block.canonical_type.has_value()) {
-        value["canonical_type"] = *block.canonical_type;
-    }
-    return value;
-}
-
 domain::BlockParameterDefault parse_default_value(const nlohmann::json& value) {
     if (value.is_null()) {
         return nullptr;
@@ -868,7 +752,7 @@ domain::BlockDescriptor reflect_block_in_subprocess(gr::PluginLoader& loader, co
     if (pid == 0) {
         ::close(pipe_fds[0]);
         try {
-            const auto payload = to_json(reflect_block(loader, id)).dump();
+            const auto payload = domain::block_catalog_worker_json(reflect_block(loader, id)).dump();
             write_all(pipe_fds[1], payload);
             ::close(pipe_fds[1]);
             _exit(0);
