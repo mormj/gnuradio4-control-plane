@@ -1,5 +1,7 @@
 #pragma once
 
+#include <nlohmann/json_fwd.hpp>
+
 #include <map>
 #include <optional>
 #include <string>
@@ -77,6 +79,12 @@ struct BlockDescriptor {
     std::vector<BlockPortDescriptor> outputs;
     std::vector<BlockParameterDescriptor> parameters;
 };
+
+void to_json(nlohmann::json& result, const BlockPortDescriptor& port);
+void to_json(nlohmann::json& result, const BlockParameterDescriptor& parameter);
+void to_json(nlohmann::json& result, const BlockDescriptor& block);
+// The internal worker retains canonical_type and calls the parameter default default_value.
+nlohmann::json block_catalog_worker_json(const BlockDescriptor& block);
 
 bool operator==(const BlockPortDescriptor& left, const BlockPortDescriptor& right);
 bool operator==(const BlockParameterDescriptor& left, const BlockParameterDescriptor& right);
