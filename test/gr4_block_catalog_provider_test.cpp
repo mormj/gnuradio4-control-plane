@@ -56,6 +56,17 @@ TEST(Gr4BlockCatalogProviderTest, SharedPluginPreservesSchemaAndCountRelationshi
     EXPECT_EQ(found->inputs.at(0).is_optional, true);
     EXPECT_EQ(found->inputs.at(0).is_synchronous, false);
     EXPECT_EQ(found->outputs.at(0).fixed_extent, 2);
+    const auto parameter = std::ranges::find(found->parameters, "channels", &gr4cp::domain::BlockParameterDescriptor::name);
+    ASSERT_NE(parameter, found->parameters.end());
+    EXPECT_EQ(parameter->label, "Series count");
+    EXPECT_EQ(parameter->unit, "channels");
+    EXPECT_EQ(parameter->visible, true);
+    EXPECT_EQ(parameter->minimum, 0.0);
+    EXPECT_EQ(parameter->maximum, 32.0);
+    EXPECT_EQ(parameter->summary, "Number of input series");
+    const auto wide = std::ranges::find(found->parameters, "wide", &gr4cp::domain::BlockParameterDescriptor::name);
+    ASSERT_NE(wide, found->parameters.end());
+    EXPECT_FALSE(wide->maximum.has_value()) << "unsafe integer bounds must not become rounded browser constraints";
 }
 
 struct SchemaProbe : gr::Block<SchemaProbe> {
@@ -227,13 +238,13 @@ TEST(Gr4BlockCatalogProviderTest, BlockDetailsIncludeBuiltinParametersAndExtende
     EXPECT_EQ(name->runtime_mutability, std::optional<std::string>("immutable"));
     EXPECT_FALSE(ui_constraints->runtime_mutability.has_value());
 
-    EXPECT_EQ(unique_name->ui_hint, std::optional<std::string>("read_only"));
+    EXPECT_FALSE(unique_name->ui_hint.has_value());
     EXPECT_EQ(compute_domain->ui_hint, std::optional<std::string>("advanced"));
     EXPECT_EQ(disconnect_on_done->ui_hint, std::optional<std::string>("advanced"));
     EXPECT_EQ(input_chunk_size->ui_hint, std::optional<std::string>("advanced"));
     EXPECT_EQ(output_chunk_size->ui_hint, std::optional<std::string>("advanced"));
     EXPECT_EQ(stride->ui_hint, std::optional<std::string>("advanced"));
-    EXPECT_EQ(name->ui_hint, std::optional<std::string>("read_only"));
+    EXPECT_EQ(name->ui_hint, std::optional<std::string>("advanced"));
     EXPECT_EQ(ui_constraints->ui_hint, std::optional<std::string>("advanced"));
 
     const auto* amplitude = parameter_by_name("amplitude");

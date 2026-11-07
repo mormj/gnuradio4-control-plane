@@ -186,6 +186,11 @@ public:
                 .outputs = {{"out", "float32"}},
                 .parameters = {[] {
                     gr4cp::domain::BlockParameterDescriptor parameter("scale", "float", false, 1.0, "Scale factor");
+                    parameter.label = "Scale";
+                    parameter.unit = "V";
+                    parameter.visible = false;
+                    parameter.minimum = 0.0;
+                    parameter.maximum = 10.0;
                     parameter.runtime_mutability = "mutable";
                     parameter.value_kind = "scalar";
                     parameter.ui_hint = "advanced";
@@ -239,6 +244,11 @@ public:
                 .outputs = {{"out", "float"}},
                 .parameters = {[] {
                     gr4cp::domain::BlockParameterDescriptor parameter("scale", "float", false, 1.0, "Scale factor");
+                    parameter.label = "Scale";
+                    parameter.unit = "V";
+                    parameter.visible = false;
+                    parameter.minimum = 0.0;
+                    parameter.maximum = 10.0;
                     parameter.runtime_mutability = "mutable";
                     parameter.value_kind = "scalar";
                     parameter.ui_hint = "advanced";
@@ -2149,6 +2159,11 @@ TEST_F(HttpApiTest, GetBlockByIdIncludesExtendedParameterMetadataWhenAvailable) 
     ASSERT_TRUE(parameter.contains("value_kind"));
     ASSERT_TRUE(parameter.contains("ui_hint"));
     EXPECT_EQ(parameter["summary"], "Scale factor");
+    EXPECT_EQ(parameter["label"], "Scale");
+    EXPECT_EQ(parameter["unit"], "V");
+    EXPECT_EQ(parameter["visible"], false);
+    EXPECT_EQ(parameter["minimum"], 0.0);
+    EXPECT_EQ(parameter["maximum"], 10.0);
     EXPECT_EQ(parameter["runtime_mutability"], "mutable");
     EXPECT_EQ(parameter["value_kind"], "scalar");
     EXPECT_EQ(parameter["ui_hint"], "advanced");

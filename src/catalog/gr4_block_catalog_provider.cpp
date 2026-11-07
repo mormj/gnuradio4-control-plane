@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -244,26 +245,29 @@ std::optional<std::string> parameter_runtime_mutability(std::string_view name) {
     return std::nullopt;
 }
 
-std::optional<std::string> parameter_ui_hint(std::string_view name) {
-    if (name == "name" || name == "unique_name") {
-        return std::string("read_only");
-    }
-    if (name == "compute_domain" || name == "disconnect_on_done" || name == "ui_constraints" ||
-        name == "input_chunk_size" || name == "output_chunk_size" || name == "stride") {
-        return std::string("advanced");
-    }
-
-    return std::nullopt;
+std::optional<double> parameter_meta_number(const gr::property_map& meta, std::string_view name, std::string_view suffix) {
+    const auto it = meta.find(std::string(name) + std::string(suffix));
+    if (it == meta.end()) return std::nullopt;
+    std::optional<double> result;
+    gr::pmt::ValueVisitor([&](const auto& value) {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_arithmetic_v<T> && !std::same_as<T, bool>) {
+            const auto number = static_cast<long double>(value);
+            if constexpr (std::integral<T>) {
+                // Do not turn an exact integer limit into a rounded browser constraint.
+                if (number < -9007199254740991.L || number > 9007199254740991.L) return;
+            }
+            const auto converted = static_cast<double>(value);
+            if (std::isfinite(converted)) result = converted;
+        }
+    }).visit(it->second);
+    return result;
 }
 
 std::string parameter_summary(const gr::property_map& meta, std::string_view name) {
-    if (const auto description = parameter_meta_string(meta, name, "::description");
-        description.has_value() && !description->empty()) {
-        return *description;
-    }
-    if (const auto documentation = parameter_meta_string(meta, name, "::documentation");
-        documentation.has_value() && !documentation->empty()) {
-        return *documentation;
+    for (const auto suffix : {"::documentation", "::description"}) {
+        const auto text = parameter_meta_string(meta, name, suffix);
+        if (text && !text->empty()) return *text;
     }
     return "";
 }
@@ -427,7 +431,14 @@ std::vector<domain::BlockParameterDescriptor> to_parameters(gr::BlockModel& bloc
             descriptor.enum_choices = *enum_choices;
         }
         descriptor.enum_type = parameter_enum_type(meta_information, name);
-        descriptor.ui_hint = parameter_ui_hint(name);
+        descriptor.label = parameter_meta_string(meta_information, name, "::description");
+        descriptor.unit = parameter_meta_string(meta_information, name, "::unit");
+        descriptor.minimum = parameter_meta_number(meta_information, name, "::minimum");
+        descriptor.maximum = parameter_meta_number(meta_information, name, "::maximum");
+        if (const auto it = meta_information.find(std::string(name) + "::visible"); it != meta_information.end()) {
+            if (const auto* visible = it->second.get_if<bool>()) descriptor.visible = *visible;
+        }
+        if (descriptor.visible == false) descriptor.ui_hint = "advanced";
         descriptors.push_back(std::move(descriptor));
     }
     std::sort(descriptors.begin(), descriptors.end(), [](const auto& left, const auto& right) {
@@ -556,6 +567,21 @@ nlohmann::json to_json(const domain::BlockParameterDescriptor& parameter) {
                          {"required", parameter.required},
                          {"default_value", to_json(parameter.default_value)},
                          {"summary", parameter.summary}};
+    if (parameter.label.has_value()) {
+        value["label"] = *parameter.label;
+    }
+    if (parameter.unit.has_value()) {
+        value["unit"] = *parameter.unit;
+    }
+    if (parameter.visible.has_value()) {
+        value["visible"] = *parameter.visible;
+    }
+    if (parameter.minimum.has_value()) {
+        value["minimum"] = *parameter.minimum;
+    }
+    if (parameter.maximum.has_value()) {
+        value["maximum"] = *parameter.maximum;
+    }
     if (parameter.runtime_mutability.has_value()) {
         value["runtime_mutability"] = *parameter.runtime_mutability;
     }
@@ -686,6 +712,21 @@ domain::BlockParameterDescriptor parse_parameter_descriptor(const nlohmann::json
         value.at("required").get<bool>(),
         parse_default_value(value.at("default_value")),
         value.at("summary").get<std::string>());
+    if (const auto it = value.find("label"); it != value.end() && it->is_string()) {
+        parameter.label = it->get<std::string>();
+    }
+    if (const auto it = value.find("unit"); it != value.end() && it->is_string()) {
+        parameter.unit = it->get<std::string>();
+    }
+    if (const auto it = value.find("visible"); it != value.end() && it->is_boolean()) {
+        parameter.visible = it->get<bool>();
+    }
+    if (const auto it = value.find("minimum"); it != value.end() && it->is_number()) {
+        parameter.minimum = it->get<double>();
+    }
+    if (const auto it = value.find("maximum"); it != value.end() && it->is_number()) {
+        parameter.maximum = it->get<double>();
+    }
     if (const auto it = value.find("runtime_mutability"); it != value.end() && it->is_string()) {
         parameter.runtime_mutability = it->get<std::string>();
     }

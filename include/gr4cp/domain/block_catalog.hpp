@@ -44,6 +44,11 @@ struct BlockParameterDescriptor {
     bool required{false};
     BlockParameterDefault default_value{nullptr};
     std::string summary;
+    std::optional<std::string> label;
+    std::optional<std::string> unit;
+    std::optional<bool> visible;
+    std::optional<double> minimum;
+    std::optional<double> maximum;
     std::optional<std::string> runtime_mutability;
     std::optional<std::string> value_kind;
     std::optional<std::vector<std::string>> enum_choices;

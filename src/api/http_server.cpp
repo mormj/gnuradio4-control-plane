@@ -100,6 +100,21 @@ Json block_parameter_to_json(const domain::BlockParameterDescriptor& parameter) 
         {"summary", parameter.summary},
     };
 
+    if (parameter.label.has_value()) {
+        body["label"] = *parameter.label;
+    }
+    if (parameter.unit.has_value()) {
+        body["unit"] = *parameter.unit;
+    }
+    if (parameter.visible.has_value()) {
+        body["visible"] = *parameter.visible;
+    }
+    if (parameter.minimum.has_value()) {
+        body["minimum"] = *parameter.minimum;
+    }
+    if (parameter.maximum.has_value()) {
+        body["maximum"] = *parameter.maximum;
+    }
     if (parameter.runtime_mutability.has_value()) {
         body["runtime_mutability"] = *parameter.runtime_mutability;
     }

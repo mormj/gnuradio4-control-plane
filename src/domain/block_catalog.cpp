@@ -16,6 +16,11 @@ bool operator==(const BlockPortDescriptor& left, const BlockPortDescriptor& righ
 bool operator==(const BlockParameterDescriptor& left, const BlockParameterDescriptor& right) {
     return left.name == right.name && left.type == right.type && left.required == right.required &&
            left.default_value == right.default_value && left.summary == right.summary &&
+           left.label == right.label &&
+           left.unit == right.unit &&
+           left.visible == right.visible &&
+           left.minimum == right.minimum &&
+           left.maximum == right.maximum &&
            left.runtime_mutability == right.runtime_mutability && left.value_kind == right.value_kind &&
            left.enum_choices == right.enum_choices && left.enum_type == right.enum_type &&
            left.enum_labels == right.enum_labels && left.enum_source == right.enum_source &&
