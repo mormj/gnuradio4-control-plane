@@ -14,6 +14,50 @@
 
 namespace {
 
+struct CountProbe : gr::Block<CountProbe> {
+    std::vector<gr::PortIn<float>> inputs;
+    std::vector<gr::PortOut<double>> outputs;
+    std::vector<gr::PortIn<float>> unowned;
+    gr::Annotated<gr::Size_t, "channels", gr::PortCountFor<"inputs", "outputs">, gr::Limits<0U, 32U>> channels = 0;
+    int n_unowned = 7;
+    GR_MAKE_REFLECTABLE(CountProbe, inputs, outputs, unowned, channels, n_unowned);
+    gr::work::Status processBulk(auto&&...) { return gr::work::Status::OK; }
+};
+
+TEST(Gr4BlockCatalogProviderTest, CountRelationshipsUseExactTargetsAndBounds) {
+    gr::BlockRegistry registry;
+    gr::SchedulerRegistry schedulers;
+    ASSERT_TRUE(registry.insert<CountProbe>("=CountProbe"));
+    auto loader = std::make_shared<gr::PluginLoader>(registry, schedulers, std::span<const std::string>{});
+    const auto blocks = gr4cp::catalog::Gr4BlockCatalogProvider(loader).list();
+    const auto found = std::ranges::find(blocks, "CountProbe", &gr4cp::domain::BlockDescriptor::id);
+    ASSERT_NE(found, blocks.end());
+    for (const auto* port : {&found->inputs.at(0), &found->outputs.at(0)}) {
+        EXPECT_EQ(port->size_parameter, "channels");
+        EXPECT_EQ(port->min_port_count, 0);
+        EXPECT_EQ(port->max_port_count, 32);
+        EXPECT_EQ(port->render_port_count, 0);
+    }
+    EXPECT_FALSE(found->inputs.at(1).size_parameter);
+    EXPECT_FALSE(found->inputs.at(1).render_port_count);
+}
+
+TEST(Gr4BlockCatalogProviderTest, SharedPluginPreservesSchemaAndCountRelationship) {
+    gr::BlockRegistry registry;
+    gr::SchedulerRegistry schedulers;
+    const std::vector<std::string> paths{GR4CP_PORT_SCHEMA_PLUGIN_DIR};
+    auto loader = std::make_shared<gr::PluginLoader>(registry, schedulers, paths);
+    const auto blocks = gr4cp::catalog::Gr4BlockCatalogProvider(loader).list();
+    const auto found = std::ranges::find(blocks, "PluginSchemaProbe", &gr4cp::domain::BlockDescriptor::id);
+    ASSERT_NE(found, blocks.end());
+    EXPECT_EQ(found->inputs.at(0).type, "float64");
+    EXPECT_EQ(found->inputs.at(0).size_parameter, "channels");
+    EXPECT_EQ(found->inputs.at(0).min_port_count, 0);
+    EXPECT_EQ(found->inputs.at(0).is_optional, true);
+    EXPECT_EQ(found->inputs.at(0).is_synchronous, false);
+    EXPECT_EQ(found->outputs.at(0).fixed_extent, 2);
+}
+
 struct SchemaProbe : gr::Block<SchemaProbe> {
     std::vector<gr::PortIn<double, gr::Optional, gr::Async>> empty;
     std::array<gr::PortOut<float>, 2> fixed;

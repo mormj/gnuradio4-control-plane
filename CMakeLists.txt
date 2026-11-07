@@ -405,6 +405,13 @@ if(NOT EMSCRIPTEN)
             GR4CP_PLUGIN_DIRECTORIES="${GR4CP_PLUGIN_DIRECTORIES}"
     )
     add_dependencies(gr4cp_core_test gr4cp_broken_plugin)
+    if(GR4CP_HAVE_GNURADIO4)
+        add_library(gr4cp_port_schema_plugin MODULE test/port_schema_plugin.cpp)
+        target_link_libraries(gr4cp_port_schema_plugin PRIVATE gnuradio4::gnuradio-core gnuradio4::gnuradio-plugin)
+        set_target_properties(gr4cp_port_schema_plugin PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/port-schema-plugin")
+        add_dependencies(gr4cp_core_test gr4cp_port_schema_plugin)
+        target_compile_definitions(gr4cp_core_test PRIVATE GR4CP_PORT_SCHEMA_PLUGIN_DIR="$<TARGET_FILE_DIR:gr4cp_port_schema_plugin>")
+    endif()
 
     gtest_discover_tests(gr4cp_core_test
         PROPERTIES

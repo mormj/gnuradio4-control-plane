@@ -290,132 +290,6 @@ std::optional<domain::BlockPortCardinalityKind> cardinality_kind_from_string(std
 
 #endif  // !defined(__EMSCRIPTEN__)
 
-std::optional<int> port_count_lower_bound(std::string_view parameter_name) {
-    if (parameter_name == "n_inputs" || parameter_name == "n_outputs" || parameter_name == "n_ports") {
-        return 1;
-    }
-    return std::nullopt;
-}
-
-std::optional<int> port_count_upper_bound(std::string_view parameter_name) {
-    if (parameter_name == "n_inputs" || parameter_name == "n_outputs" || parameter_name == "n_ports") {
-        return 32;
-    }
-    return std::nullopt;
-}
-
-std::optional<std::string> infer_collection_size_parameter(std::string_view collection_name,
-                                                           bool is_input,
-                                                           const std::vector<domain::BlockParameterDescriptor>& parameters) {
-    std::vector<std::string> candidates;
-    const auto add_candidate = [&](std::string value) {
-        candidates.push_back(std::move(value));
-    };
-
-    auto add_patterns = [&](std::string_view alias) {
-        add_candidate("n_" + std::string(alias));
-        add_candidate("num_" + std::string(alias));
-        add_candidate(std::string(alias));
-        add_candidate(std::string(alias) + "_count");
-        add_candidate("count_" + std::string(alias));
-    };
-
-    const std::string base(collection_name);
-    const auto singular = [&base]() {
-        if (base.size() > 3 && base.ends_with("ies")) {
-            return base.substr(0, base.size() - 3) + "y";
-        }
-        if (base.size() > 1 && base.ends_with('s')) {
-            return base.substr(0, base.size() - 1);
-        }
-        return base;
-    }();
-    const auto plural = [&base]() {
-        if (base.ends_with('s')) {
-            return base;
-        }
-        if (base.ends_with('y') && base.size() > 1) {
-            return base.substr(0, base.size() - 1) + "ies";
-        }
-        return base + "s";
-    }();
-
-    add_patterns(base);
-    if (singular != base) {
-        add_patterns(singular);
-    }
-    if (plural != base && plural != singular) {
-        add_patterns(plural);
-    }
-    add_patterns(is_input ? "in" : "out");
-    add_patterns(is_input ? "input" : "output");
-    add_patterns(is_input ? "inputs" : "outputs");
-
-    std::vector<std::string> unique_candidates;
-    std::set<std::string> seen;
-    unique_candidates.reserve(candidates.size());
-    for (const auto& candidate : candidates) {
-        if (seen.insert(candidate).second) {
-            unique_candidates.push_back(candidate);
-        }
-    }
-
-    const auto matches = [&](const std::string& candidate) {
-        return std::find_if(parameters.begin(), parameters.end(), [&](const auto& parameter) {
-                   return parameter.name == candidate;
-               }) != parameters.end();
-    };
-
-    for (const auto& candidate : unique_candidates) {
-        if (matches(candidate)) {
-            return candidate;
-        }
-    }
-
-    return std::nullopt;
-}
-
-std::optional<int> parameter_default_int(const domain::BlockParameterDescriptor& parameter) {
-    if (const auto* default_value = std::get_if<int>(&parameter.default_value)) {
-        return *default_value;
-    }
-    return std::nullopt;
-}
-
-std::optional<int> infer_collection_render_port_count(std::string_view collection_name,
-                                                      bool is_input,
-                                                   const std::vector<domain::BlockParameterDescriptor>& parameters,
-                                                      std::size_t current_count,
-                                                      std::optional<int> min_port_count,
-                                                      std::optional<int> max_port_count) {
-    const auto size_parameter = infer_collection_size_parameter(collection_name, is_input, parameters);
-    if (size_parameter.has_value()) {
-        const auto parameter_it = std::find_if(parameters.begin(), parameters.end(), [&](const auto& parameter) {
-            return parameter.name == *size_parameter;
-        });
-        if (parameter_it != parameters.end()) {
-            if (const auto default_count = parameter_default_int(*parameter_it); default_count.has_value()) {
-                auto count = *default_count;
-                if (min_port_count.has_value() && count < *min_port_count) {
-                    count = *min_port_count;
-                }
-                if (max_port_count.has_value() && *max_port_count >= 0 && count > *max_port_count) {
-                    count = *max_port_count;
-                }
-                return count;
-            }
-        }
-    }
-
-    if (current_count > 0) {
-        return static_cast<int>(current_count);
-    }
-    if (min_port_count.has_value() && *min_port_count > 0) {
-        return *min_port_count;
-    }
-    return std::nullopt;
-}
-
 struct CollectionMetadata {
     domain::BlockPortCardinalityKind cardinality_kind{domain::BlockPortCardinalityKind::Fixed};
     std::optional<int> current_port_count;
@@ -435,37 +309,21 @@ std::optional<std::string> reflected_canonical_type(const gr::BlockModel& block)
 }
 
 CollectionMetadata infer_collection_metadata(std::string_view collection_name,
-                                             bool is_input,
-                                             const std::vector<domain::BlockParameterDescriptor>& parameters,
+                                             bool /*is_input*/,
+                                             const std::vector<domain::BlockParameterDescriptor>& /*parameters*/,
                                              std::size_t current_count) {
     CollectionMetadata metadata;
     metadata.cardinality_kind = domain::BlockPortCardinalityKind::Dynamic;
     metadata.current_port_count = static_cast<int>(current_count);
-    metadata.min_port_count = current_count == 0 ? 0 : 1;
+    metadata.min_port_count = 0;
     metadata.max_port_count = -1;
-    metadata.size_parameter = infer_collection_size_parameter(collection_name, is_input, parameters);
     metadata.handle_name_template = std::string(collection_name) + "#${index}";
-
-    if (metadata.size_parameter.has_value()) {
-        if (const auto lower = port_count_lower_bound(*metadata.size_parameter)) {
-            metadata.min_port_count = *lower;
-        }
-        if (const auto upper = port_count_upper_bound(*metadata.size_parameter)) {
-            metadata.max_port_count = *upper;
-        }
-    }
-    metadata.render_port_count = infer_collection_render_port_count(collection_name,
-                                                                     is_input,
-                                                                     parameters,
-                                                                     current_count,
-                                                                     metadata.min_port_count,
-                                                                     metadata.max_port_count);
 
     return metadata;
 }
 
 domain::BlockPortDescriptor to_port_descriptor(const gr::BlockModel::DynamicPortOrCollection& port_or_collection,
-                                               const std::vector<domain::BlockParameterDescriptor>& parameters,
+                                                 const std::vector<domain::BlockParameterDescriptor>& parameters,
                                                bool is_input) {
     return std::visit(
         [&](const auto& item) -> domain::BlockPortDescriptor {
@@ -578,6 +436,43 @@ std::vector<domain::BlockParameterDescriptor> to_parameters(gr::BlockModel& bloc
     return descriptors;
 }
 
+void attach_count_relationships(std::vector<domain::BlockPortDescriptor>& inputs,
+                                std::vector<domain::BlockPortDescriptor>& outputs,
+                                const std::vector<domain::BlockParameterDescriptor>& parameters,
+                                const gr::property_map& meta) {
+    for (const auto& parameter : parameters) {
+        const auto targets = parameter_meta_string_list(meta, parameter.name, "::port_count_for");
+        if (!targets) continue;
+        for (const auto& target : *targets) {
+            domain::BlockPortDescriptor* port = nullptr;
+            for (auto* ports : {&inputs, &outputs}) {
+                for (auto& candidate : *ports) {
+                    if (candidate.name == target) {
+                        if (port != nullptr) throw CatalogLoadError("ambiguous count target: " + target);
+                        port = &candidate;
+                    }
+                }
+            }
+            if (port == nullptr || port->cardinality_kind != domain::BlockPortCardinalityKind::Dynamic || port->size_parameter) {
+                throw CatalogLoadError("invalid or competing count target: " + target);
+            }
+            port->size_parameter = parameter.name;
+            for (const auto suffix : {"::minimum", "::maximum"}) {
+                const auto it = meta.find(parameter.name + suffix);
+                if (it == meta.end()) continue;
+                const auto converted = parameter_default_value(it->second);
+                const auto* bound = std::get_if<int>(&converted);
+                if (bound == nullptr || *bound < 0) continue;
+                if (std::string_view(suffix) == "::minimum") port->min_port_count = *bound;
+                else port->max_port_count = *bound;
+            }
+            if (const auto* count = std::get_if<int>(&parameter.default_value); count && *count >= 0) {
+                port->render_port_count = *count;
+            }
+        }
+    }
+}
+
 domain::BlockDescriptor reflect_block(gr::PluginLoader& loader, const std::string& id) {
     auto instantiated = loader.instantiateOrError(id);
     if (!instantiated.has_value()) {
@@ -591,14 +486,17 @@ domain::BlockDescriptor reflect_block(gr::PluginLoader& loader, const std::strin
     block->settings().init();
     auto parameters = to_parameters(*block);
     const auto summary = block_summary(*block);
+    auto inputs = to_ports(block->dynamicInputPorts(), parameters, true, block->metaInformation());
+    auto outputs = to_ports(block->dynamicOutputPorts(), parameters, false, block->metaInformation());
+    attach_count_relationships(inputs, outputs, parameters, block->metaInformation());
     return {
         .id = id,
         .canonical_type = reflected_canonical_type(*block),
         .name = block_name(*block, id),
         .category = block_category(*block, id),
         .summary = summary,
-        .inputs = to_ports(block->dynamicInputPorts(), parameters, true, block->metaInformation()),
-        .outputs = to_ports(block->dynamicOutputPorts(), parameters, false, block->metaInformation()),
+        .inputs = std::move(inputs),
+        .outputs = std::move(outputs),
         .parameters = std::move(parameters),
     };
 }
