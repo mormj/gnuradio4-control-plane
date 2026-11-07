@@ -21,6 +21,7 @@ bool operator==(const BlockParameterDescriptor& left, const BlockParameterDescri
            left.visible == right.visible &&
            left.minimum == right.minimum &&
            left.maximum == right.maximum &&
+           left.update_policy == right.update_policy &&
            left.runtime_mutability == right.runtime_mutability && left.value_kind == right.value_kind &&
            left.enum_choices == right.enum_choices && left.enum_type == right.enum_type &&
            left.enum_labels == right.enum_labels && left.enum_source == right.enum_source &&

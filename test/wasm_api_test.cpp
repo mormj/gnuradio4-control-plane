@@ -63,6 +63,7 @@ TEST_F(WasmApiTest, CatalogRetainsStructuralPortSchema) {
     port.is_synchronous = false;
     block.inputs.push_back(port);
     gr4cp::domain::BlockParameterDescriptor parameter("gain", "float", false, 1.0, "Gain");
+    parameter.update_policy = "stopped";
     parameter.unit = "V";
     parameter.minimum = 0.0;
     parameter.maximum = 10.0;
@@ -73,6 +74,7 @@ TEST_F(WasmApiTest, CatalogRetainsStructuralPortSchema) {
     ASSERT_EQ(result.status, 200);
     const auto input = Json::parse(result.body).at("inputs").at(0);
     const auto parameter_json = Json::parse(result.body).at("parameters").at(0);
+    EXPECT_EQ(parameter_json.at("update_policy"), "stopped");
     EXPECT_EQ(parameter_json.at("unit"), "V");
     EXPECT_EQ(parameter_json.at("minimum"), 0.0);
     EXPECT_EQ(parameter_json.at("maximum"), 10.0);

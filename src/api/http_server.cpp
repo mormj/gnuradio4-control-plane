@@ -115,6 +115,7 @@ Json block_parameter_to_json(const domain::BlockParameterDescriptor& parameter) 
     if (parameter.maximum.has_value()) {
         body["maximum"] = *parameter.maximum;
     }
+    if (parameter.update_policy) body["update_policy"] = *parameter.update_policy;
     if (parameter.runtime_mutability.has_value()) {
         body["runtime_mutability"] = *parameter.runtime_mutability;
     }

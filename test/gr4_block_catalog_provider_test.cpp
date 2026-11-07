@@ -58,6 +58,7 @@ TEST(Gr4BlockCatalogProviderTest, SharedPluginPreservesSchemaAndCountRelationshi
     EXPECT_EQ(found->outputs.at(0).fixed_extent, 2);
     const auto parameter = std::ranges::find(found->parameters, "channels", &gr4cp::domain::BlockParameterDescriptor::name);
     ASSERT_NE(parameter, found->parameters.end());
+    EXPECT_EQ(parameter->update_policy, "topology");
     EXPECT_EQ(parameter->label, "Series count");
     EXPECT_EQ(parameter->unit, "channels");
     EXPECT_EQ(parameter->visible, true);
@@ -66,6 +67,10 @@ TEST(Gr4BlockCatalogProviderTest, SharedPluginPreservesSchemaAndCountRelationshi
     EXPECT_EQ(parameter->summary, "Number of input series");
     const auto wide = std::ranges::find(found->parameters, "wide", &gr4cp::domain::BlockParameterDescriptor::name);
     ASSERT_NE(wide, found->parameters.end());
+    EXPECT_EQ(wide->update_policy, "stopped");
+    const auto gain = std::ranges::find(found->parameters, "gain", &gr4cp::domain::BlockParameterDescriptor::name);
+    ASSERT_NE(gain, found->parameters.end());
+    EXPECT_EQ(gain->update_policy, "live");
     EXPECT_FALSE(wide->maximum.has_value()) << "unsafe integer bounds must not become rounded browser constraints";
 }
 
@@ -229,13 +234,13 @@ TEST(Gr4BlockCatalogProviderTest, BlockDetailsIncludeBuiltinParametersAndExtende
     ASSERT_NE(name, nullptr);
     ASSERT_NE(ui_constraints, nullptr);
 
-    EXPECT_EQ(unique_name->runtime_mutability, std::optional<std::string>("immutable"));
+    EXPECT_EQ(unique_name->runtime_mutability, std::optional<std::string>("read_only"));
     EXPECT_FALSE(compute_domain->runtime_mutability.has_value());
     EXPECT_FALSE(disconnect_on_done->runtime_mutability.has_value());
     EXPECT_EQ(input_chunk_size->runtime_mutability, std::optional<std::string>("read_only"));
     EXPECT_EQ(output_chunk_size->runtime_mutability, std::optional<std::string>("read_only"));
     EXPECT_EQ(stride->runtime_mutability, std::optional<std::string>("read_only"));
-    EXPECT_EQ(name->runtime_mutability, std::optional<std::string>("immutable"));
+    EXPECT_FALSE(name->runtime_mutability.has_value());
     EXPECT_FALSE(ui_constraints->runtime_mutability.has_value());
 
     EXPECT_FALSE(unique_name->ui_hint.has_value());

@@ -186,6 +186,7 @@ public:
                 .outputs = {{"out", "float32"}},
                 .parameters = {[] {
                     gr4cp::domain::BlockParameterDescriptor parameter("scale", "float", false, 1.0, "Scale factor");
+                    parameter.update_policy = "live";
                     parameter.label = "Scale";
                     parameter.unit = "V";
                     parameter.visible = false;
@@ -244,6 +245,7 @@ public:
                 .outputs = {{"out", "float"}},
                 .parameters = {[] {
                     gr4cp::domain::BlockParameterDescriptor parameter("scale", "float", false, 1.0, "Scale factor");
+                    parameter.update_policy = "live";
                     parameter.label = "Scale";
                     parameter.unit = "V";
                     parameter.visible = false;
@@ -2159,6 +2161,7 @@ TEST_F(HttpApiTest, GetBlockByIdIncludesExtendedParameterMetadataWhenAvailable) 
     ASSERT_TRUE(parameter.contains("value_kind"));
     ASSERT_TRUE(parameter.contains("ui_hint"));
     EXPECT_EQ(parameter["summary"], "Scale factor");
+    EXPECT_EQ(parameter["update_policy"], "live");
     EXPECT_EQ(parameter["label"], "Scale");
     EXPECT_EQ(parameter["unit"], "V");
     EXPECT_EQ(parameter["visible"], false);

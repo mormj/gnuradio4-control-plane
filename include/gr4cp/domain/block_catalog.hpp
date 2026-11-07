@@ -49,6 +49,7 @@ struct BlockParameterDescriptor {
     std::optional<bool> visible;
     std::optional<double> minimum;
     std::optional<double> maximum;
+    std::optional<std::string> update_policy;
     std::optional<std::string> runtime_mutability;
     std::optional<std::string> value_kind;
     std::optional<std::vector<std::string>> enum_choices;

@@ -238,13 +238,6 @@ std::optional<std::string> parameter_enum_type(const gr::property_map& meta, std
     return parameter_meta_string(meta, name, "::enum_type");
 }
 
-std::optional<std::string> parameter_runtime_mutability(std::string_view name) {
-    if (name == "name" || name == "unique_name") {
-        return std::string("immutable");
-    }
-    return std::nullopt;
-}
-
 std::optional<double> parameter_meta_number(const gr::property_map& meta, std::string_view name, std::string_view suffix) {
     const auto it = meta.find(std::string(name) + std::string(suffix));
     if (it == meta.end()) return std::nullopt;
@@ -422,8 +415,7 @@ std::vector<domain::BlockParameterDescriptor> to_parameters(gr::BlockModel& bloc
             false,
             parameter_default_value(value),
             parameter_summary(meta_information, name));
-        descriptor.runtime_mutability = parameter_runtime_mutability(name);
-        if (!descriptor.runtime_mutability.has_value() && !writable.contains(std::string(name))) {
+        if (!writable.contains(std::string(name))) {
             descriptor.runtime_mutability = "read_only";
         }
         descriptor.value_kind = parameter_value_kind(value);
@@ -431,6 +423,7 @@ std::vector<domain::BlockParameterDescriptor> to_parameters(gr::BlockModel& bloc
             descriptor.enum_choices = *enum_choices;
         }
         descriptor.enum_type = parameter_enum_type(meta_information, name);
+        descriptor.update_policy = parameter_meta_string(meta_information, name, "::update_policy");
         descriptor.label = parameter_meta_string(meta_information, name, "::description");
         descriptor.unit = parameter_meta_string(meta_information, name, "::unit");
         descriptor.minimum = parameter_meta_number(meta_information, name, "::minimum");
@@ -582,6 +575,7 @@ nlohmann::json to_json(const domain::BlockParameterDescriptor& parameter) {
     if (parameter.maximum.has_value()) {
         value["maximum"] = *parameter.maximum;
     }
+    if (parameter.update_policy) value["update_policy"] = *parameter.update_policy;
     if (parameter.runtime_mutability.has_value()) {
         value["runtime_mutability"] = *parameter.runtime_mutability;
     }
@@ -727,6 +721,7 @@ domain::BlockParameterDescriptor parse_parameter_descriptor(const nlohmann::json
     if (const auto it = value.find("maximum"); it != value.end() && it->is_number()) {
         parameter.maximum = it->get<double>();
     }
+    if (const auto it = value.find("update_policy"); it != value.end() && it->is_string()) parameter.update_policy = it->get<std::string>();
     if (const auto it = value.find("runtime_mutability"); it != value.end() && it->is_string()) {
         parameter.runtime_mutability = it->get<std::string>();
     }
