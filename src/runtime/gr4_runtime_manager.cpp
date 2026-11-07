@@ -728,6 +728,17 @@ void Gr4RuntimeManager::set_block_settings(const domain::Session& session,
     if (!foreign.empty()) {
         throw SettingsRefusedError(std::format("block {} has no setting named {}", block_target, foreign));
     }
+    const auto metadata = block->metaInformation();
+    for (const auto& [key, _] : patch) {
+        const auto policy = metadata.find(std::string(key) + "::update_policy");
+        if (policy == metadata.end()) continue;
+        const auto value = policy->second.value_or(std::string_view{});
+        if (value == "stopped" || value == "topology") {
+            // Check the whole patch before staging any value, including otherwise live-editable fields.
+            throw SettingsRefusedError(std::format("setting {} on block {} requires {} configuration", key, block_target,
+                value == "topology" ? "graph topology" : "stopped"));
+        }
+    }
     gr::property_map converted;
     for (const auto& [key, value] : patch) {
         converted.insert_or_assign(key, with_held_complex_precision(value, block->get(std::string(key))));

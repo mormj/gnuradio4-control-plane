@@ -295,6 +295,55 @@ connections:
 )";
 }
 
+struct PolicySource : gr::Block<PolicySource> {
+    gr::PortOut<float> out;
+    gr::Annotated<float, "gain", gr::UpdatePolicy<gr::SettingUpdatePolicy::Live>> gain = 1.0F;
+    gr::Annotated<int, "mode", gr::UpdatePolicy<gr::SettingUpdatePolicy::Stopped>> mode = 0;
+    gr::Annotated<int, "layout", gr::UpdatePolicy<gr::SettingUpdatePolicy::Topology>> layout = 0;
+    GR_MAKE_REFLECTABLE(PolicySource, out, gain, mode, layout);
+    gr::work::Status processBulk(gr::OutputSpanLike auto& output) {
+        std::ranges::fill(output, gain.value);
+        output.publish(output.size());
+        return gr::work::Status::OK;
+    }
+};
+
+struct PolicyDrain : gr::Block<PolicyDrain> {
+    gr::PortIn<float> in;
+    GR_MAKE_REFLECTABLE(PolicyDrain, in);
+    gr::work::Status processBulk(gr::InputSpanLike auto& input) {
+        std::ignore = input.consume(input.size());
+        return gr::work::Status::OK;
+    }
+};
+
+TEST(SettingPolicyRuntimeTest, RefusesRestrictedPatchesBeforeStagingAnyField) {
+    auto& registry = gr::globalBlockRegistry();
+    ASSERT_TRUE(registry.insert<PolicySource>("=PolicySource"));
+    ASSERT_TRUE(registry.insert<PolicyDrain>("=PolicyDrain"));
+    auto loader = std::make_shared<gr::PluginLoader>(registry, gr::globalSchedulerRegistry(), std::span<const std::string>{});
+    gr4cp::runtime::Gr4RuntimeManager runtime(loader);
+    auto session = make_session("setting_policy", R"(blocks:
+  - id: PolicySource
+    parameters: {name: source}
+  - id: PolicyDrain
+    parameters: {name: drain}
+connections:
+  - [source, out, drain, in]
+)");
+    runtime.prepare(session);
+    runtime.start(session);
+    using gr4cp::runtime::BlockSettingsMode;
+    using gr4cp::runtime::SettingsRefusedError;
+    EXPECT_THROW(runtime.set_block_settings(session, "source", {{"gain", 99.0F}, {"mode", 2}}, BlockSettingsMode::Staged), SettingsRefusedError);
+    EXPECT_THROW(runtime.set_block_settings(session, "source", {{"layout", 2}}, BlockSettingsMode::Staged), SettingsRefusedError);
+    EXPECT_EQ(runtime.get_block_settings(session, "source").at("gain").value_or(0.0F), 1.0F);
+    EXPECT_NO_THROW(runtime.set_block_settings(session, "source", {{"gain", 2.0F}}, BlockSettingsMode::Staged));
+    EXPECT_EQ(read_setting_until(runtime, session, "source", "gain", 2.0F).at("gain").value_or(0.0F), 2.0F);
+    std::ignore = runtime.stop(session);
+    runtime.destroy(session);
+}
+
 class Gr4RuntimeManagerTest : public ::testing::Test {
 protected:
     void SetUp() override {
