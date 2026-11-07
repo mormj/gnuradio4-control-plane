@@ -49,6 +49,8 @@ struct BlockParameterDescriptor {
     std::optional<bool> visible;
     std::optional<double> minimum;
     std::optional<double> maximum;
+    std::optional<std::string> enabled_when_parameter;
+    std::optional<bool> enabled_when_value;
     std::optional<std::string> update_policy;
     std::optional<std::string> runtime_mutability;
     std::optional<std::string> value_kind;

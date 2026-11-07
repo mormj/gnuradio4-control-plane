@@ -423,6 +423,10 @@ std::vector<domain::BlockParameterDescriptor> to_parameters(gr::BlockModel& bloc
             descriptor.enum_choices = *enum_choices;
         }
         descriptor.enum_type = parameter_enum_type(meta_information, name);
+        descriptor.enabled_when_parameter = parameter_meta_string(meta_information, name, "::enabled_when_parameter");
+        if (const auto it = meta_information.find(std::string(name) + "::enabled_when_value"); it != meta_information.end()) {
+            if (const auto* expected = it->second.get_if<bool>()) descriptor.enabled_when_value = *expected;
+        }
         descriptor.update_policy = parameter_meta_string(meta_information, name, "::update_policy");
         descriptor.label = parameter_meta_string(meta_information, name, "::description");
         descriptor.unit = parameter_meta_string(meta_information, name, "::unit");
@@ -575,6 +579,8 @@ nlohmann::json to_json(const domain::BlockParameterDescriptor& parameter) {
     if (parameter.maximum.has_value()) {
         value["maximum"] = *parameter.maximum;
     }
+    if (parameter.enabled_when_parameter) value["enabled_when_parameter"] = *parameter.enabled_when_parameter;
+    if (parameter.enabled_when_value) value["enabled_when_value"] = *parameter.enabled_when_value;
     if (parameter.update_policy) value["update_policy"] = *parameter.update_policy;
     if (parameter.runtime_mutability.has_value()) {
         value["runtime_mutability"] = *parameter.runtime_mutability;
@@ -721,6 +727,8 @@ domain::BlockParameterDescriptor parse_parameter_descriptor(const nlohmann::json
     if (const auto it = value.find("maximum"); it != value.end() && it->is_number()) {
         parameter.maximum = it->get<double>();
     }
+    if (const auto it = value.find("enabled_when_parameter"); it != value.end() && it->is_string()) parameter.enabled_when_parameter = it->get<std::string>();
+    if (const auto it = value.find("enabled_when_value"); it != value.end() && it->is_boolean()) parameter.enabled_when_value = it->get<bool>();
     if (const auto it = value.find("update_policy"); it != value.end() && it->is_string()) parameter.update_policy = it->get<std::string>();
     if (const auto it = value.find("runtime_mutability"); it != value.end() && it->is_string()) {
         parameter.runtime_mutability = it->get<std::string>();

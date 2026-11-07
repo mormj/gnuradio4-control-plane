@@ -71,6 +71,8 @@ TEST(Gr4BlockCatalogProviderTest, SharedPluginPreservesSchemaAndCountRelationshi
     const auto gain = std::ranges::find(found->parameters, "gain", &gr4cp::domain::BlockParameterDescriptor::name);
     ASSERT_NE(gain, found->parameters.end());
     EXPECT_EQ(gain->update_policy, "live");
+    EXPECT_EQ(gain->enabled_when_parameter, "automatic");
+    EXPECT_EQ(gain->enabled_when_value, false);
     EXPECT_FALSE(wide->maximum.has_value()) << "unsafe integer bounds must not become rounded browser constraints";
 }
 

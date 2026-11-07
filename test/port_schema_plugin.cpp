@@ -8,8 +8,9 @@ struct PluginSchemaProbe : gr::Block<PluginSchemaProbe> {
     std::array<gr::PortOut<float>, 2> outputs;
     gr::Annotated<gr::Size_t, "Series count", gr::Doc<"Number of input series">, gr::Unit<"channels">, gr::Visible, gr::PortCountFor<"inputs">, gr::Limits<0U, 32U>> channels = 0;
     gr::Annotated<std::uint64_t, "Wide limit", gr::UpdatePolicy<gr::SettingUpdatePolicy::Stopped>, gr::Limits<std::uint64_t{0}, std::numeric_limits<std::uint64_t>::max()>> wide = 0;
-    gr::Annotated<float, "Gain", gr::UpdatePolicy<gr::SettingUpdatePolicy::Live>> gain = 1.0F;
-    GR_MAKE_REFLECTABLE(PluginSchemaProbe, inputs, outputs, channels, wide, gain);
+    gr::Annotated<float, "Gain", gr::UpdatePolicy<gr::SettingUpdatePolicy::Live>, gr::EnabledWhen<"automatic", false>> gain = 1.0F;
+    bool automatic = true;
+    GR_MAKE_REFLECTABLE(PluginSchemaProbe, inputs, outputs, channels, wide, gain, automatic);
     gr::work::Status processBulk(auto&&...) { return gr::work::Status::OK; }
 };
 
