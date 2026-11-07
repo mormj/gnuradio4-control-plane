@@ -51,6 +51,11 @@ TEST(Gr4BlockCatalogProviderTest, SharedPluginPreservesSchemaAndCountRelationshi
     const auto found = std::ranges::find(blocks, "PluginSchemaProbe", &gr4cp::domain::BlockDescriptor::id);
     ASSERT_NE(found, blocks.end());
     EXPECT_EQ(found->inputs.at(0).type, "float64");
+    ASSERT_TRUE(found->canonical_type.has_value());
+    EXPECT_NE(found->canonical_type->find("PluginSchemaProbe"), std::string::npos);
+    const auto count = std::ranges::find(found->parameters, "channels", &gr4cp::domain::BlockParameterDescriptor::name);
+    ASSERT_NE(count, found->parameters.end());
+    EXPECT_EQ(count->default_value, gr4cp::domain::BlockParameterDefault{0});
     EXPECT_EQ(found->inputs.at(0).size_parameter, "channels");
     EXPECT_EQ(found->inputs.at(0).min_port_count, 0);
     EXPECT_EQ(found->inputs.at(0).is_optional, true);
