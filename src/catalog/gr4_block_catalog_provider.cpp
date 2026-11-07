@@ -477,6 +477,33 @@ void attach_count_relationships(std::vector<domain::BlockPortDescriptor>& inputs
     }
 }
 
+std::optional<domain::VisualizationCapability> visualization_capability(const gr::property_map& meta) {
+    const auto entry = meta.find("gr:capabilities");
+    if (entry == meta.end()) return std::nullopt;
+    const auto capabilities = value_to_map(entry->second);
+    if (!capabilities || !capabilities->contains("studio:visualization")) return std::nullopt;
+    domain::VisualizationCapability capability;
+    const auto value = value_to_map(capabilities->at("studio:visualization"));
+    if (!value) return capability;
+    if (const auto version = value->find("version"); version != value->end()) {
+        const auto converted = parameter_default_value(version->second);
+        if (const auto* number = std::get_if<int>(&converted)) capability.version = *number;
+    }
+    capability.family = parameter_meta_string(*value, "", "family").value_or("");
+    capability.payload_format = parameter_meta_string(*value, "", "payload_format").value_or("");
+    capability.routing = parameter_meta_string(*value, "", "routing").value_or("");
+    capability.semantic_kind = parameter_meta_string(*value, "", "semantic_kind").value_or("");
+    capability.supported_transports = parameter_meta_string_list(*value, "", "supported_transports").value_or(std::vector<std::string>{});
+    if (const auto it = value->find("parameters"); it != value->end()) {
+        if (const auto roles = value_to_map(it->second)) {
+            for (const auto& [role, field] : *roles) {
+                if (const auto name = value_as_string(field)) capability.parameters.emplace(std::string(role), *name);
+            }
+        }
+    }
+    return capability;
+}
+
 domain::BlockDescriptor reflect_block(gr::PluginLoader& loader, const std::string& id) {
     auto instantiated = loader.instantiateOrError(id);
     if (!instantiated.has_value()) {
@@ -502,6 +529,7 @@ domain::BlockDescriptor reflect_block(gr::PluginLoader& loader, const std::strin
         .inputs = std::move(inputs),
         .outputs = std::move(outputs),
         .parameters = std::move(parameters),
+        .visualization = visualization_capability(block->metaInformation()),
     };
 }
 
@@ -636,6 +664,9 @@ domain::BlockDescriptor parse_block_descriptor(const std::string& payload) {
     block.name = value.at("name").get<std::string>();
     block.category = value.at("category").get<std::string>();
     block.summary = value.at("summary").get<std::string>();
+    if (value.contains("capabilities") && value.at("capabilities").contains("studio:visualization")) {
+        block.visualization = value.at("capabilities").at("studio:visualization").get<domain::VisualizationCapability>();
+    }
 
     for (const auto& input : value.at("inputs")) {
         block.inputs.push_back(parse_port_descriptor(input));

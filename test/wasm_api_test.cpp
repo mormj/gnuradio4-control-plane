@@ -62,6 +62,9 @@ TEST_F(WasmApiTest, CatalogRetainsStructuralPortSchema) {
     port.is_optional = true;
     port.is_synchronous = false;
     block.inputs.push_back(port);
+    block.visualization = gr4cp::domain::VisualizationCapability{.version = 1, .family = "series",
+        .payload_format = "series-window-json-v1", .routing = "session", .supported_transports = {"http_poll"},
+        .parameters = {{"transport", "transport"}, {"endpoint", "endpoint"}}};
     gr4cp::domain::BlockParameterDescriptor parameter("gain", "float", false, 1.0, "Gain");
     parameter.unit = "V";
     parameter.minimum = 0.0;
@@ -72,6 +75,7 @@ TEST_F(WasmApiTest, CatalogRetainsStructuralPortSchema) {
     const auto result = api.dispatch("GET", "/blocks/schema", "");
     ASSERT_EQ(result.status, 200);
     const auto input = Json::parse(result.body).at("inputs").at(0);
+    EXPECT_EQ(Json::parse(result.body).at("capabilities").at("studio:visualization").at("version"), 1);
     const auto parameter_json = Json::parse(result.body).at("parameters").at(0);
     EXPECT_EQ(parameter_json.at("unit"), "V");
     EXPECT_EQ(parameter_json.at("minimum"), 0.0);

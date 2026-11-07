@@ -3,6 +3,7 @@
 #include <nlohmann/json_fwd.hpp>
 
 #include <map>
+#include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <string>
 #include <utility>
@@ -74,6 +75,20 @@ struct BlockParameterDescriptor {
           summary(std::move(summary_)) {}
 };
 
+struct VisualizationCapability {
+    int version{0};
+    std::string family;
+    std::string payload_format;
+    std::string routing;
+    std::string semantic_kind;
+    std::vector<std::string> supported_transports;
+    std::map<std::string, std::string> parameters;
+    bool operator==(const VisualizationCapability&) const = default;
+};
+
+void to_json(nlohmann::json& json, const VisualizationCapability& capability);
+void from_json(const nlohmann::json& json, VisualizationCapability& capability);
+
 struct BlockDescriptor {
     std::string id;
     std::optional<std::string> canonical_type;
@@ -83,6 +98,7 @@ struct BlockDescriptor {
     std::vector<BlockPortDescriptor> inputs;
     std::vector<BlockPortDescriptor> outputs;
     std::vector<BlockParameterDescriptor> parameters;
+    std::optional<VisualizationCapability> visualization;
 };
 
 void to_json(nlohmann::json& result, const BlockPortDescriptor& port);

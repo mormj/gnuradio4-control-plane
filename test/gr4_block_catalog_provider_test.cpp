@@ -50,6 +50,11 @@ TEST(Gr4BlockCatalogProviderTest, SharedPluginPreservesSchemaAndCountRelationshi
     const auto blocks = gr4cp::catalog::Gr4BlockCatalogProvider(loader).list();
     const auto found = std::ranges::find(blocks, "PluginSchemaProbe", &gr4cp::domain::BlockDescriptor::id);
     ASSERT_NE(found, blocks.end());
+    ASSERT_TRUE(found->visualization.has_value());
+    EXPECT_EQ(found->visualization->version, 1);
+    EXPECT_EQ(found->visualization->family, "series");
+    EXPECT_EQ(found->visualization->payload_format, "series-window-json-v1");
+    EXPECT_EQ(found->visualization->parameters.at("seriesCount"), "channels");
     EXPECT_EQ(found->inputs.at(0).type, "float64");
     EXPECT_EQ(found->inputs.at(0).size_parameter, "channels");
     EXPECT_EQ(found->inputs.at(0).min_port_count, 0);

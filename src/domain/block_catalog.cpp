@@ -4,6 +4,24 @@
 
 namespace gr4cp::domain {
 
+void to_json(nlohmann::json& json, const VisualizationCapability& capability) {
+    json = {{"version", capability.version}, {"family", capability.family},
+            {"payload_format", capability.payload_format}, {"routing", capability.routing},
+            {"supported_transports", capability.supported_transports},
+            {"parameters", capability.parameters}};
+    if (!capability.semantic_kind.empty()) json["semantic_kind"] = capability.semantic_kind;
+}
+
+void from_json(const nlohmann::json& json, VisualizationCapability& capability) {
+    capability.version = json.value("version", 0);
+    capability.family = json.value("family", "");
+    capability.payload_format = json.value("payload_format", "");
+    capability.routing = json.value("routing", "");
+    capability.semantic_kind = json.value("semantic_kind", "");
+    capability.supported_transports = json.value("supported_transports", std::vector<std::string>{});
+    capability.parameters = json.value("parameters", std::map<std::string, std::string>{});
+}
+
 using Json = nlohmann::json;
 
 Json block_parameter_default_to_json(const BlockParameterDefault& value) {
@@ -103,6 +121,7 @@ void to_json(Json& result, const BlockDescriptor& block) {
     result = Json{{"id", block.id}, {"name", block.name}, {"category", block.category},
                   {"summary", block.summary}, {"inputs", block.inputs},
                   {"outputs", block.outputs}, {"parameters", block.parameters}};
+    if (block.visualization) result["capabilities"]["studio:visualization"] = *block.visualization;
 }
 
 nlohmann::json block_catalog_worker_json(const BlockDescriptor& block) {
@@ -145,7 +164,7 @@ bool operator==(const BlockParameterDescriptor& left, const BlockParameterDescri
 bool operator==(const BlockDescriptor& left, const BlockDescriptor& right) {
     return left.id == right.id && left.canonical_type == right.canonical_type && left.name == right.name && left.category == right.category &&
            left.summary == right.summary && left.inputs == right.inputs && left.outputs == right.outputs &&
-           left.parameters == right.parameters;
+           left.parameters == right.parameters && left.visualization == right.visualization;
 }
 
 }  // namespace gr4cp::domain

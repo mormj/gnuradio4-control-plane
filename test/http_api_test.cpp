@@ -223,6 +223,10 @@ public:
                 }()},
                 .outputs = {{"out", "float"}},
                 .parameters = {{"n_inputs", "int", false, 3, "Number of inputs"}},
+                .visualization = gr4cp::domain::VisualizationCapability{.version = 1, .family = "series",
+                    .payload_format = "series-window-json-v1", .routing = "session",
+                    .supported_transports = {"http_poll"},
+                    .parameters = {{"transport", "transport"}, {"endpoint", "endpoint"}, {"seriesCount", "n_inputs"}}},
             },
             {
                 .id = "blocks.sources.signal_source_f",
@@ -2130,6 +2134,8 @@ TEST_F(HttpApiTest, GetBlockByIdIncludesDynamicCollectionMetadata) {
 
     const auto body = parse_json(response);
     ASSERT_EQ(body["inputs"].size(), 1U);
+    EXPECT_EQ(body["capabilities"]["studio:visualization"]["version"], 1);
+    EXPECT_EQ(body["capabilities"]["studio:visualization"]["parameters"]["seriesCount"], "n_inputs");
     const auto& input = body["inputs"][0];
     EXPECT_EQ(input["cardinality_kind"], "dynamic");
     EXPECT_EQ(input["collection_kind"], "dynamic");
