@@ -203,6 +203,11 @@ public:
                     port.name = "in";
                     port.type = "float";
                     port.cardinality_kind = gr4cp::domain::BlockPortCardinalityKind::Dynamic;
+                    port.collection_kind = "dynamic";
+                    port.port_kind = "stream";
+                    port.schema_version = 1;
+                    port.is_optional = true;
+                    port.is_synchronous = false;
                     port.current_port_count = 3;
                     port.render_port_count = 3;
                     port.min_port_count = 1;
@@ -2117,6 +2122,11 @@ TEST_F(HttpApiTest, GetBlockByIdIncludesDynamicCollectionMetadata) {
     ASSERT_EQ(body["inputs"].size(), 1U);
     const auto& input = body["inputs"][0];
     EXPECT_EQ(input["cardinality_kind"], "dynamic");
+    EXPECT_EQ(input["collection_kind"], "dynamic");
+    EXPECT_EQ(input["schema_version"], 1);
+    EXPECT_EQ(input["port_kind"], "stream");
+    EXPECT_EQ(input["is_optional"], true);
+    EXPECT_EQ(input["is_synchronous"], false);
     EXPECT_EQ(input["current_port_count"], 3);
     EXPECT_EQ(input["render_port_count"], 3);
     EXPECT_EQ(input["min_port_count"], 1);

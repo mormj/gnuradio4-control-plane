@@ -18,7 +18,8 @@ using Json = nlohmann::json;
 
 class EmptyBlockCatalogProvider final : public gr4cp::catalog::BlockCatalogProvider {
 public:
-    std::vector<gr4cp::domain::BlockDescriptor> list() const override { return {}; }
+    std::vector<gr4cp::domain::BlockDescriptor> entries;
+    std::vector<gr4cp::domain::BlockDescriptor> list() const override { return entries; }
 };
 
 class EmptySchedulerCatalogProvider final : public gr4cp::catalog::SchedulerCatalogProvider {
@@ -48,6 +49,29 @@ protected:
     gr4cp::api::HttpServer http_server{sessions, streams, block_catalog, scheduler_catalog, settings};
     std::jthread http_thread;
 };
+
+TEST_F(WasmApiTest, CatalogRetainsStructuralPortSchema) {
+    gr4cp::domain::BlockDescriptor block;
+    block.id = "schema";
+    block.name = "Schema";
+    gr4cp::domain::BlockPortDescriptor port("bank", "float64");
+    port.collection_kind = "fixed";
+    port.fixed_extent = 0;
+    port.schema_version = 1;
+    port.port_kind = "stream";
+    port.is_optional = true;
+    port.is_synchronous = false;
+    block.inputs.push_back(port);
+    blocks.entries.push_back(block);
+    const auto result = api.dispatch("GET", "/blocks/schema", "");
+    ASSERT_EQ(result.status, 200);
+    const auto input = Json::parse(result.body).at("inputs").at(0);
+    EXPECT_EQ(input.at("fixed_extent"), 0);
+    EXPECT_EQ(input.at("collection_kind"), "fixed");
+    EXPECT_EQ(input.at("schema_version"), 1);
+    EXPECT_EQ(input.at("is_optional"), true);
+    EXPECT_EQ(input.at("is_synchronous"), false);
+}
 
 TEST_F(WasmApiTest, HealthIdentityIsAStableUuidAcrossDispatchers) {
     const auto health = api.dispatch("GET", "/healthz", "");

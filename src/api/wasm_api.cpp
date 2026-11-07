@@ -28,6 +28,24 @@ Json block_port_to_json(const domain::BlockPortDescriptor& port) {
         {"cardinality_kind", port.cardinality_kind == domain::BlockPortCardinalityKind::Dynamic ? "dynamic" : "fixed"},
     };
 
+    if (port.collection_kind.has_value()) {
+        body["collection_kind"] = *port.collection_kind;
+    }
+    if (port.fixed_extent.has_value()) {
+        body["fixed_extent"] = *port.fixed_extent;
+    }
+    if (port.port_kind.has_value()) {
+        body["port_kind"] = *port.port_kind;
+    }
+    if (port.is_optional.has_value()) {
+        body["is_optional"] = *port.is_optional;
+    }
+    if (port.is_synchronous.has_value()) {
+        body["is_synchronous"] = *port.is_synchronous;
+    }
+    if (port.schema_version.has_value()) {
+        body["schema_version"] = *port.schema_version;
+    }
     if (port.current_port_count.has_value()) {
         body["current_port_count"] = *port.current_port_count;
     }

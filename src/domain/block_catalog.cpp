@@ -3,7 +3,10 @@
 namespace gr4cp::domain {
 
 bool operator==(const BlockPortDescriptor& left, const BlockPortDescriptor& right) {
-    return left.name == right.name && left.type == right.type && left.cardinality_kind == right.cardinality_kind &&
+    return left.collection_kind == right.collection_kind && left.fixed_extent == right.fixed_extent &&
+           left.port_kind == right.port_kind && left.is_optional == right.is_optional &&
+           left.is_synchronous == right.is_synchronous && left.schema_version == right.schema_version &&
+           left.name == right.name && left.type == right.type && left.cardinality_kind == right.cardinality_kind &&
            left.current_port_count == right.current_port_count && left.min_port_count == right.min_port_count &&
            left.render_port_count == right.render_port_count && left.max_port_count == right.max_port_count &&
            left.size_parameter == right.size_parameter &&

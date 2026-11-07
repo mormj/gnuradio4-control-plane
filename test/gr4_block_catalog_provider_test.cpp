@@ -9,8 +9,40 @@
 #include "gr4cp/catalog/gr4_block_catalog_provider.hpp"
 #include "gr4cp/catalog/gr4_block_catalog_provider_detail.hpp"
 #include "test_plugin_loader.hpp"
+#include <gnuradio-4.0/BlockModel.hpp>
+#include <gnuradio-4.0/PluginLoader.hpp>
 
 namespace {
+
+struct SchemaProbe : gr::Block<SchemaProbe> {
+    std::vector<gr::PortIn<double, gr::Optional, gr::Async>> empty;
+    std::array<gr::PortOut<float>, 2> fixed;
+    std::array<gr::PortOut<double>, 0> zero;
+    GR_MAKE_REFLECTABLE(SchemaProbe, empty, fixed, zero);
+    gr::work::Status processBulk(auto&&...) { return gr::work::Status::OK; }
+};
+
+TEST(Gr4BlockCatalogProviderTest, SchemaSurvivesReflectionAndWorkerSerialization) {
+    gr::BlockRegistry registry;
+    gr::SchedulerRegistry schedulers;
+    ASSERT_TRUE(registry.insert<SchemaProbe>("=SchemaProbe"));
+    auto loader = std::make_shared<gr::PluginLoader>(registry, schedulers, std::span<const std::string>{});
+    gr4cp::catalog::Gr4BlockCatalogProvider provider(loader);
+    const auto blocks = provider.list();
+    const auto found = std::ranges::find(blocks, "SchemaProbe", &gr4cp::domain::BlockDescriptor::id);
+    ASSERT_NE(found, blocks.end());
+    const auto& input = found->inputs.at(0);
+    EXPECT_EQ(input.type, "float64");
+    EXPECT_EQ(input.collection_kind, "dynamic");
+    EXPECT_EQ(input.schema_version, 1);
+    EXPECT_EQ(input.is_optional, true);
+    EXPECT_EQ(input.is_synchronous, false);
+    const auto& output = found->outputs.at(0);
+    EXPECT_EQ(output.collection_kind, "fixed");
+    EXPECT_EQ(output.fixed_extent, 2);
+    EXPECT_EQ(output.cardinality_kind, gr4cp::domain::BlockPortCardinalityKind::Fixed);
+    EXPECT_EQ(found->outputs.at(1).fixed_extent, 0);
+}
 
 TEST(Gr4BlockCatalogProviderTest, FallbackCategoryDerivationPreservesNamespacePath) {
     EXPECT_EQ(gr4cp::catalog::detail::derive_category_from_block_id("gr::incubator::analog::QuadratureDemod"),

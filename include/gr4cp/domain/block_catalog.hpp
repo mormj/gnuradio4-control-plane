@@ -20,6 +20,12 @@ struct BlockPortDescriptor {
     std::string name;
     std::string type;
     BlockPortCardinalityKind cardinality_kind{BlockPortCardinalityKind::Fixed};
+    std::optional<std::string> collection_kind;
+    std::optional<int> fixed_extent;
+    std::optional<std::string> port_kind;
+    std::optional<bool> is_optional;
+    std::optional<bool> is_synchronous;
+    std::optional<int> schema_version;
     std::optional<int> current_port_count;
     std::optional<int> render_port_count;
     std::optional<int> min_port_count;

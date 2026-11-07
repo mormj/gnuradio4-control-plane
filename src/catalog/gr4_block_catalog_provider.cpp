@@ -382,48 +382,9 @@ std::optional<int> parameter_default_int(const domain::BlockParameterDescriptor&
     return std::nullopt;
 }
 
-std::string trim_copy(std::string_view value) {
-    const auto first = value.find_first_not_of(" \t\n\r");
-    if (first == std::string_view::npos) {
-        return "";
-    }
-    const auto last = value.find_last_not_of(" \t\n\r");
-    return std::string(value.substr(first, last - first + 1));
-}
-
-std::optional<std::string> infer_collection_element_type(std::string_view block_id) {
-    const auto open = block_id.find('<');
-    const auto close = block_id.rfind('>');
-    if (open == std::string_view::npos || close == std::string_view::npos || close <= open + 1) {
-        return std::nullopt;
-    }
-
-    std::string_view args = block_id.substr(open + 1, close - open - 1);
-    std::size_t depth = 0;
-    for (std::size_t index = 0; index < args.size(); ++index) {
-        const char ch = args[index];
-        if (ch == '<') {
-            ++depth;
-        } else if (ch == '>') {
-            if (depth > 0) {
-                --depth;
-            }
-        } else if (ch == ',' && depth == 0) {
-            args = args.substr(0, index);
-            break;
-        }
-    }
-
-    const auto type = trim_copy(args);
-    if (type.empty()) {
-        return std::nullopt;
-    }
-    return type;
-}
-
 std::optional<int> infer_collection_render_port_count(std::string_view collection_name,
                                                       bool is_input,
-                                                      const std::vector<domain::BlockParameterDescriptor>& parameters,
+                                                   const std::vector<domain::BlockParameterDescriptor>& parameters,
                                                       std::size_t current_count,
                                                       std::optional<int> min_port_count,
                                                       std::optional<int> max_port_count) {
@@ -463,7 +424,6 @@ struct CollectionMetadata {
     std::optional<int> max_port_count;
     std::optional<std::string> size_parameter;
     std::optional<std::string> handle_name_template;
-    std::optional<std::string> element_type;
 };
 
 std::optional<std::string> reflected_canonical_type(const gr::BlockModel& block) {
@@ -475,7 +435,6 @@ std::optional<std::string> reflected_canonical_type(const gr::BlockModel& block)
 }
 
 CollectionMetadata infer_collection_metadata(std::string_view collection_name,
-                                             std::string_view block_id,
                                              bool is_input,
                                              const std::vector<domain::BlockParameterDescriptor>& parameters,
                                              std::size_t current_count) {
@@ -486,7 +445,6 @@ CollectionMetadata infer_collection_metadata(std::string_view collection_name,
     metadata.max_port_count = -1;
     metadata.size_parameter = infer_collection_size_parameter(collection_name, is_input, parameters);
     metadata.handle_name_template = std::string(collection_name) + "#${index}";
-    metadata.element_type = infer_collection_element_type(block_id);
 
     if (metadata.size_parameter.has_value()) {
         if (const auto lower = port_count_lower_bound(*metadata.size_parameter)) {
@@ -507,7 +465,6 @@ CollectionMetadata infer_collection_metadata(std::string_view collection_name,
 }
 
 domain::BlockPortDescriptor to_port_descriptor(const gr::BlockModel::DynamicPortOrCollection& port_or_collection,
-                                               std::string_view block_id,
                                                const std::vector<domain::BlockParameterDescriptor>& parameters,
                                                bool is_input) {
     return std::visit(
@@ -525,10 +482,7 @@ domain::BlockPortDescriptor to_port_descriptor(const gr::BlockModel::DynamicPort
                 return descriptor;
             } else {
                 std::string type = item.ports.empty() ? std::string() : std::string(item.ports.front().typeName());
-                const auto metadata = infer_collection_metadata(item.name, block_id, is_input, parameters, item.ports.size());
-                if (type.empty() && metadata.element_type.has_value()) {
-                    type = *metadata.element_type;
-                }
+                const auto metadata = infer_collection_metadata(item.name, is_input, parameters, item.ports.size());
                 domain::BlockPortDescriptor descriptor;
                 descriptor.name = std::string(item.name);
                 descriptor.type = std::move(type);
@@ -546,13 +500,48 @@ domain::BlockPortDescriptor to_port_descriptor(const gr::BlockModel::DynamicPort
 }
 
 std::vector<domain::BlockPortDescriptor> to_ports(gr::BlockModel::DynamicPorts& ports,
-                                                  std::string_view block_id,
                                                   const std::vector<domain::BlockParameterDescriptor>& parameters,
-                                                  bool is_input) {
+                                                  bool is_input,
+                                                  const gr::property_map& meta) {
+    std::optional<gr::property_map> schema;
+    if (const auto it = meta.find("gr:port_schema"); it != meta.end()) {
+        const auto root = value_to_map(it->second);
+        if (root && root->contains("version") && root->at("version").value_or(0U) == 1U) {
+            const auto direction = root->find(is_input ? "inputs" : "outputs");
+            if (direction != root->end()) {
+                schema = value_to_map(direction->second);
+            }
+        }
+    }
     std::vector<domain::BlockPortDescriptor> descriptors;
     descriptors.reserve(ports.size());
     for (const auto& port : ports) {
-        descriptors.push_back(to_port_descriptor(port, block_id, parameters, is_input));
+        auto descriptor = to_port_descriptor(port, parameters, is_input);
+        if (schema && schema->contains(descriptor.name)) {
+            const auto declared = value_to_map(schema->at(std::pmr::string(descriptor.name)));
+            if (!declared) {
+                throw CatalogLoadError("invalid port schema for " + descriptor.name);
+            }
+            descriptor.type = value_as_string(declared->at("type")).value();
+            descriptor.collection_kind = value_as_string(declared->at("collection_kind")).value();
+            descriptor.port_kind = value_as_string(declared->at("port_kind")).value();
+            descriptor.is_optional = declared->at("is_optional").value_or(false);
+            descriptor.is_synchronous = declared->at("is_synchronous").value_or(false);
+            descriptor.schema_version = 1;
+            if (*descriptor.collection_kind == "fixed") {
+                const auto extent = declared->at("fixed_extent").value_or(std::uint64_t(-1));
+                if (extent > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
+                    throw CatalogLoadError("port extent is not representable: " + descriptor.name);
+                }
+                descriptor.fixed_extent = static_cast<int>(extent);
+                descriptor.cardinality_kind = domain::BlockPortCardinalityKind::Fixed;
+                descriptor.min_port_count = descriptor.fixed_extent;
+                descriptor.max_port_count = descriptor.fixed_extent;
+                descriptor.render_port_count = descriptor.fixed_extent;
+                descriptor.size_parameter.reset();
+            }
+        }
+        descriptors.push_back(std::move(descriptor));
     }
     return descriptors;
 }
@@ -608,8 +597,8 @@ domain::BlockDescriptor reflect_block(gr::PluginLoader& loader, const std::strin
         .name = block_name(*block, id),
         .category = block_category(*block, id),
         .summary = summary,
-        .inputs = to_ports(block->dynamicInputPorts(), id, parameters, true),
-        .outputs = to_ports(block->dynamicOutputPorts(), id, parameters, false),
+        .inputs = to_ports(block->dynamicInputPorts(), parameters, true, block->metaInformation()),
+        .outputs = to_ports(block->dynamicOutputPorts(), parameters, false, block->metaInformation()),
         .parameters = std::move(parameters),
     };
 }
@@ -624,6 +613,24 @@ nlohmann::json to_json(const domain::BlockPortDescriptor& port) {
     nlohmann::json value{{"name", port.name},
                          {"type", port.type},
                          {"cardinality_kind", std::string(cardinality_kind_to_string(port.cardinality_kind))}};
+    if (port.collection_kind.has_value()) {
+        value["collection_kind"] = *port.collection_kind;
+    }
+    if (port.fixed_extent.has_value()) {
+        value["fixed_extent"] = *port.fixed_extent;
+    }
+    if (port.port_kind.has_value()) {
+        value["port_kind"] = *port.port_kind;
+    }
+    if (port.is_optional.has_value()) {
+        value["is_optional"] = *port.is_optional;
+    }
+    if (port.is_synchronous.has_value()) {
+        value["is_synchronous"] = *port.is_synchronous;
+    }
+    if (port.schema_version.has_value()) {
+        value["schema_version"] = *port.schema_version;
+    }
     if (port.current_port_count.has_value()) {
         value["current_port_count"] = *port.current_port_count;
     }
@@ -734,6 +741,24 @@ domain::BlockPortDescriptor parse_port_descriptor(const nlohmann::json& value) {
         if (const auto parsed = cardinality_kind_from_string(it->get<std::string>()); parsed.has_value()) {
             port.cardinality_kind = *parsed;
         }
+    }
+    if (const auto it = value.find("collection_kind"); it != value.end() && it->is_string()) {
+        port.collection_kind = it->get<std::string>();
+    }
+    if (const auto it = value.find("fixed_extent"); it != value.end() && it->is_number_integer()) {
+        port.fixed_extent = it->get<int>();
+    }
+    if (const auto it = value.find("port_kind"); it != value.end() && it->is_string()) {
+        port.port_kind = it->get<std::string>();
+    }
+    if (const auto it = value.find("is_optional"); it != value.end() && it->is_boolean()) {
+        port.is_optional = it->get<bool>();
+    }
+    if (const auto it = value.find("is_synchronous"); it != value.end() && it->is_boolean()) {
+        port.is_synchronous = it->get<bool>();
+    }
+    if (const auto it = value.find("schema_version"); it != value.end() && it->is_number_integer()) {
+        port.schema_version = it->get<int>();
     }
     if (const auto it = value.find("current_port_count"); it != value.end() && it->is_number_integer()) {
         port.current_port_count = it->get<int>();
